@@ -94,27 +94,37 @@ local function get_token(self)
         return nil
     end
     adapter_utils.get_env_vars(adapter, { timeout = config.adapters.opts.cmd_timeout })
+    log:trace("adapter: %s", vim.json.encode(adapter.env_replaced))
+
     local url = adapter.env_replaced.url .. adapter.env_replaced.auth_url
     local username = adapter.env_replaced.username
     local password = adapter.env_replaced.password
+    log:trace("url: %s", url and url or "")
+    log:trace("username: %s", username and username or "")
+    log:trace("password: %s", password and password or "")
 
-    local ok, response, json
-
+    local ok, request, response, json
+    request = {
+        sync = true,
+        headers = {
+            ["Content-Type"] = "application/json",
+        },
+        body = vim.json.encode({
+            username = username,
+            password = password,
+        }),
+    }
+    log:trace("url: %s  request: %s", url, vim.json.encode(request))
     ok, response = pcall(function()
-        return Curl.post(url, {
-            sync = true,
-            headers = {
-                ["Content-Type"] = "application/json",
-            },
-            body = vim.json.encode({
-                username = username,
-                password = password,
-            }),
-        })
+        return Curl.post(url, request)
     end)
 
-    if not ok then
-        log:error("Failed to get token: %s", response)
+    if response ~= nil then
+        log:trace("response: %s", response)
+    end
+
+    if not ok or response == nil or response.status ~= 200 then
+        log:error("Failed to get token: %d %s", response.status, response.body)
         return nil
     end
 
@@ -146,6 +156,11 @@ local function get_chatid(self)
         return _chat_id
     end
 
+    local token = get_token()
+    if not token then
+        return nil
+    end
+
     local adapter = require("codecompanion.adapters").resolve(self)
     if not adapter then
         log:error("Could not resolve adapter")
@@ -153,35 +168,40 @@ local function get_chatid(self)
     end
     adapter_utils.get_env_vars(adapter, { timeout = config.adapters.opts.cmd_timeout })
     local url = adapter.env_replaced.url .. adapter.env_replaced.chatid_url
-    local token = get_token()
+    log:trace("url: %s", url and url or "")
 
-    local ok, response, json
+    local ok, request, response, json
+
+    request = {
+        sync = true,
+        headers = {
+            ["Content-Type"] = "application/json",
+            ["Authorization"] = token,
+        },
+    }
+    log:trace("url: %s  request: %s", url, vim.json.encode(request))
 
     ok, response = pcall(function()
-        return Curl.get(url, {
-            sync = true,
-            headers = {
-                ["Content-Type"] = "application/json",
-                ["Authorization"] = token,
-            },
-        })
+        return Curl.get(url, request)
     end)
+    if response ~= nil then
+        log:trace("response: %s", response)
+    end
 
-    if not ok then
-        log:error("Failed to get token: %s", response)
+    if not ok or response == nil or response.status ~= 200 then
+        log:error("Failed to get chatid: %d %s", response.status, response.body)
         return nil
     end
 
-    -- {"code":0,"data":{"accessToken":"f22e9a05-cc68-401f-84ff-1d9835d7781e","username":"duanbinlin@tp-link.com.hk"},"message":"Success"}
     ok, json = pcall(vim.json.decode, response.body)
 
     if not ok then
-        log:error("Failed to parse token response")
+        log:error("Failed to parse chatid response")
         return nil
     end
 
     if json.code ~= 0 then
-        log:error("Token api error: %s", json.message)
+        log:error("chatid api error: %s", json.message)
         return nil
     end
 
@@ -194,6 +214,10 @@ local function find_history_by_chatid()
     if not _chat_id then
         return nil
     end
+    local token = get_token()
+    if not token then
+        return nil
+    end
 
     local adapter = require("codecompanion.adapters").resolve(self)
     if not adapter then
@@ -202,36 +226,43 @@ local function find_history_by_chatid()
     end
     adapter_utils.get_env_vars(adapter, { timeout = config.adapters.opts.cmd_timeout })
     local url = adapter.env_replaced.url .. adapter.env_replaced.history_url
-    local token = get_token()
+    log:trace("url: %s", url and url or "")
 
-    local ok, response, json
+    local ok, request, response, json
+
+    request = {
+        sync = true,
+        headers = {
+            ["Accept"] = "application/json",
+            ["Content-Type"] = "application/json",
+            ["Authorization"] = token,
+        },
+        body = vim.json.encode(_chat_id),
+    }
+    log:trace("url: %s  request: %s", url, vim.json.encode(request))
 
     ok, response = pcall(function()
-        return Curl.post(url, {
-            sync = true,
-            headers = {
-                ["Accept"] = "application/json",
-                ["Content-Type"] = "application/json",
-                ["Authorization"] = token,
-            },
-            body = vim.json.encode(_chat_id),
-        })
+        return Curl.post(url, request)
     end)
 
+    if response ~= nil then
+        log:trace("response: %s", response)
+    end
+
     if not ok then
-        log:error("Failed to get token: %s", response)
+        log:error("Failed to get history chat: %s", response)
         return nil
     end
 
     ok, json = pcall(vim.json.decode, response.body)
 
     if not ok then
-        log:error("Failed to parse token response")
+        log:error("Failed to parse history chat response")
         return nil
     end
 
     if json.code ~= 0 then
-        log:error("Token api error")
+        log:error("history chat api error")
         return nil
     end
 
