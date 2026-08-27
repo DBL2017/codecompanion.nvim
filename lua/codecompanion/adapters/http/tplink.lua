@@ -156,7 +156,7 @@ local function get_chatid(self)
         return _chat_id
     end
 
-    local token = get_token()
+    local token = get_token(self)
     if not token then
         return nil
     end
@@ -210,11 +210,11 @@ local function get_chatid(self)
     return _chat_id
 end
 
-local function find_history_by_chatid()
+local function find_history_by_chatid(self)
     if not _chat_id then
         return nil
     end
-    local token = get_token()
+    local token = get_token(self)
     if not token then
         return nil
     end
@@ -231,7 +231,6 @@ local function find_history_by_chatid()
     local ok, request, response, json
 
     request = {
-        sync = true,
         headers = {
             ["Accept"] = "application/json",
             ["Content-Type"] = "application/json",
@@ -344,10 +343,10 @@ return {
         form_messages = function(self, messages)
             local question = ""
             local history = {}
-            local chatid = get_chatid()
+            local chatid = get_chatid(self)
 
             log:trace(chatid)
-            local chatListInfos = find_history_by_chatid()
+            local chatListInfos = find_history_by_chatid(self)
 
             if chatListInfos then
                 for _, msg in ipairs(chatListInfos) do
@@ -361,8 +360,9 @@ return {
                     question = msg.content
                 end
             end
+            local model = self.schema.model.default
             local payload = {
-                model = "DeepSeek-V4-Flash",
+                model = model,
                 history = history,
                 question = question,
                 chatid = chatid,
@@ -445,7 +445,7 @@ return {
                     local ok, err = os.remove(path)
                 end
 
-                get_token()
+                get_token(self)
             else
                 ret = {
                     status = "success",
