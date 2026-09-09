@@ -31,6 +31,7 @@ local defaults = {
       -- web_search adapters --------------------------------------------------
       duckduckgo = "duckduckgo",
       jina = "jina",
+      markitdown = "markitdown",
       tavily = "tavily",
       -------------------------------------------------------------------------
       extend = nil, -- Per-adapter overrides keyed by config key e.g. { openai = { env = { api_key = "ABC-123" } } }
@@ -228,7 +229,7 @@ The user is working on a %s machine. Please respond with system specific command
           path = "interactions.chat.tools.builtin.fetch_webpage",
           description = "Fetches content from a webpage",
           opts = {
-            adapter = "jina",
+            adapter = "jina", -- jina, markitdown
           },
         },
         ["file_search"] = {
@@ -325,6 +326,7 @@ The user is working on a %s machine. Please respond with system specific command
         opts = {
           auto_submit_errors = true, -- Send any errors to the LLM automatically?
           auto_submit_success = true, -- Send any successful output to the LLM automatically?
+          max_output_tokens = 30000, -- Truncate a tool's output above this many tokens, or the model's limit if lower
           notify_on_approval = true, -- Notify the user when a tool requires approval?,
 
           folds = {
@@ -448,7 +450,7 @@ If you are providing code changes, use the insert_edit_into_file tool (if availa
           path = "interactions.chat.slash_commands.builtin.fetch",
           description = "Insert URL contents",
           opts = {
-            adapter = "jina", -- jina
+            adapter = "jina", -- jina, markitdown
             cache_path = vim.fn.stdpath("data") .. "/codecompanion/urls",
             provider = providers.pickers, -- telescope|fzf_lua|mini_pick|snacks|default
           },
@@ -463,6 +465,7 @@ If you are providing code changes, use the insert_edit_into_file tool (if availa
             return false
           end,
           opts = {
+            auto_save_session = false, -- Save the forked chat as a session straight away?
             contains_code = false,
           },
         },
@@ -534,14 +537,15 @@ If you are providing code changes, use the insert_edit_into_file tool (if availa
         },
         ["resume"] = {
           path = "interactions.chat.slash_commands.builtin.resume",
-          description = "Resume a previous ACP session",
+          description = "Resume a previous session",
           ---@param opts { adapter: CodeCompanion.HTTPAdapter|CodeCompanion.ACPAdapter }
           ---@return boolean
           enabled = function(opts)
+            -- ACP agents list their own sessions
             if opts.adapter and opts.adapter.type == "acp" then
               return true
             end
-            return false
+            return require("codecompanion.interactions.chat.sessions").enabled()
           end,
           opts = {
             contains_code = false,
@@ -554,6 +558,24 @@ If you are providing code changes, use the insert_edit_into_file tool (if availa
           opts = {
             contains_code = true,
             interactions = { "chat", "cli" },
+          },
+        },
+        ["save"] = {
+          path = "interactions.chat.slash_commands.builtin.save",
+          description = "Save the chat as a persistent session",
+          ---@param opts { adapter: CodeCompanion.HTTPAdapter|CodeCompanion.ACPAdapter }
+          ---@return boolean
+          enabled = function(opts)
+            if not require("codecompanion.interactions.chat.sessions").enabled() then
+              return false
+            end
+            if opts.adapter and opts.adapter.type == "http" then
+              return true
+            end
+            return false
+          end,
+          opts = {
+            contains_code = false,
           },
         },
         ["share"] = {
@@ -738,6 +760,12 @@ If you are providing code changes, use the insert_edit_into_file tool (if availa
           callback = "keymaps.btw",
           description = "Send a follow-up while streaming",
         },
+      },
+      sessions = {
+        enabled = true, -- Allow chats to be saved to, and restored from, disk?
+        autosave = false, -- Save a chat as a session once the LLM has responded for the first time?
+        continuous_save = true, -- Once a chat is a session, save it again after every response and on close?
+        save_dir = vim.fs.joinpath(vim.fn.stdpath("data") --[[@as string]], "codecompanion", "sessions"),
       },
       opts = {
         context_management = {
@@ -1098,8 +1126,8 @@ The user is working on a %s machine. Please respond with system specific command
         ".rules",
         ".windsurfrules",
         ".github/copilot-instructions.md",
-        "AGENT.md",
-        "AGENTS.md",
+        { path = "AGENT.md", parser = "claude" },
+        { path = "AGENTS.md", parser = "claude" },
         { path = "CLAUDE.md", parser = "claude" },
         { path = "CLAUDE.local.md", parser = "claude" },
         { path = "~/.claude/CLAUDE.md", parser = "claude" },
