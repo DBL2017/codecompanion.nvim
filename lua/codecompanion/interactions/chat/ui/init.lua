@@ -5,6 +5,7 @@ parsing settings and rendering extmarks.
 local config = require("codecompanion.config")
 local helpers = require("codecompanion.interactions.chat.helpers")
 local log = require("codecompanion.utils.log")
+local markdown = require("codecompanion.utils.markdown")
 local schema = require("codecompanion.schema")
 local shared_ui = require("codecompanion.interactions.shared.ui")
 local tags = require("codecompanion.interactions.shared.tags")
@@ -279,7 +280,21 @@ function UI:is_following()
 
   -- Or if it's still where we last placed it, with the buffer having grown beneath it
   local followed_to = self.cursor.followed_to
-  return followed_to ~= nil and followed_to[1] == cursor[1] and followed_to[2] == cursor[2]
+  if followed_to ~= nil and followed_to[1] == cursor[1] and followed_to[2] == cursor[2] then
+    return true
+  end
+
+  -- Or if the very last lines are folded and the cursor sits on them
+  if line_count > 0 then
+    local ok_fold, fold_start = pcall(api.nvim_win_call, self.winnr, function()
+      return vim.fn.foldclosed(line_count)
+    end)
+    if ok_fold and fold_start ~= -1 and fold_start == cursor[1] then
+      return true
+    end
+  end
+
+  return false
 end
 
 ---Determine if the current chat buffer is active
@@ -422,11 +437,8 @@ function UI:render(context, messages, opts)
   -- If the user has visually selected some text, add that to the chat buffer
   if context and context.is_visual and not opts.stop_context_insertion then
     log:trace("Adding visual selection to chat buffer")
-    table.insert(lines, "````" .. context.filetype)
-    for _, line in ipairs(context.lines) do
-      table.insert(lines, line)
-    end
-    table.insert(lines, "````")
+    local block = markdown.form_codeblock(table.concat(context.lines, "\n"), { ft = context.filetype })
+    vim.list_extend(lines, vim.split(block, "\n", { plain = true }))
   end
 
   self:unlock_buf()
