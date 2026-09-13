@@ -27,7 +27,7 @@ CodeCompanion is a plugin which enables you to code with AI, using LLMs and agen
 - :battery: Support for [Model Context Protocol (MCP)](/model-context-protocol)
 - :rocket: [Inline transformations](/usage/inline), code creation and refactoring
 - :robot: [Editor Context](/usage/chat-buffer/editor-context), [Slash Commands](/usage/chat-buffer/slash-commands), [Tools](/usage/chat-buffer/agents-tools) and [Workflows](/usage/workflows) to improve LLM output
-- :brain: Support for [rules](/usage/chat-buffer/rules) files like `CLAUDE.md`, `.cursor/rules` and your own custom ones
+- :brain: Support for [skills](/usage/chat-buffer/skills) and [rules](/usage/chat-buffer/rules) (like `CLAUDE.md`, `.cursor/rules` and your own custom ones)
 - :sparkles: Built-in [prompt library](/usage/action-palette) for common tasks like advice on LSP errors and code explanations
 - :building_construction: Create your own [custom prompts](configuration/prompt-library#creating-prompts), Editor Context and Slash Commands
 - :inbox_tray: Have [multiple chats](/usage/introduction#quickly-accessing-a-chat-buffer) open at the same time
@@ -39,3 +39,7 @@ CodeCompanion is a plugin which enables you to code with AI, using LLMs and agen
 CodeCompanion utilises objects called _interactions_. These are the different ways that a user can interact with an LLM. The _chat_ interaction harnesses a buffer to allow direct conversations with LLMs. The _inline_ interaction allows for output from the LLM to be written directly, inline to a pre-existing Neovim buffer.
 
 CodeCompanion uses [adapters](/configuration/adapters-http) to connect Neovim to an LLM or agent, even going as far as specifying [models](/configuration/adapters-http#changing-the-default-model) and/or [hyperparameters](/configuration/adapters-http#changing-adapter-parameters-schema). You can specify adapters for each interaction type and also for each [prompt library](configuration/prompt-library) entry. There are far too many adapters to list so be sure to check out the [adapters folder](https://github.com/olimorris/codecompanion.nvim/tree/main/lua/codecompanion/adapters/http) in the main repository.  You can also roll your own adapters. Refer to the [extending adapters](/extending/adapters) documentation for more information. Finally, be sure to check out the [community adapters](configuration/adapters-http#community-adapters) section for user contributed adapters.
+
+## Using the Docs
+
+You can use the [@{search_help}](/usage/chat-buffer/agents-tools#search-help) tool to ask an LLM to search the CodeCompanion docs for you. Alternatively, if browsing on the site, use the search bar at the top left of the page.
