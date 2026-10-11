@@ -123,7 +123,7 @@ Please note that these mappings may be different depending on your provider.
 
 The _fork_ slash command, specific to _http_ adapters, allows you to duplicate the current chat buffer, copying the message history and preserving tools and context in the process. This enables you to branch the conversation and experiment with different prompts, models or even adapters without losing the original conversation.
 
-To save every fork as a [session](/configuration/chat-buffer#sessions) as soon as it's created:
+To save every fork as a [session](/configuration/sessions) as soon as it's created:
 
 ```lua
 require("codecompanion").setup({
@@ -157,6 +157,13 @@ The _rules_ slash command allows you to add [rules](/usage/chat-buffer/rules) gr
 
 The _mcp_ slash command allows you to start and stop [Model Context Protocol (MCP)](/configuration/mcp) servers manually from within a chat buffer. This is applied at a global level, so starting/stopping servers in one chat buffer will affect all other chat buffers. A _snacks.nvim_ and `vim.ui.select` provider is available for selecting which MCP servers to start/stop.
 
+## /mcp-prompts
+
+The _mcp-prompts_ slash command adds a [prompt](https://modelcontextprotocol.io/specification/2025-11-25/server/prompts) from a running MCP server to the chat buffer, ready for you to edit before sending. After selecting a prompt, you'll be asked for each of its arguments in turn. Optional arguments can be left blank, and cancelling at any point adds nothing.
+
+> [!NOTE]
+> Only the text from a prompt's `user` messages is added. Images, resources and `assistant` messages are skipped
+
 ## /mode
 
 The _mode_ slash command is specific to [ACP](/configuration/adapters-acp) adapters and allows users to switch between different agent operating modes, as per the [protocol](https://agentclientprotocol.com/protocol/session-modes) docs.
@@ -173,14 +180,14 @@ The _rename_ slash command is specific to [http](/configuration/adapters-http) a
 
 The _resume_ slash command lists your past chat sessions and restores the selected one into the chat buffer.
 
-What it lists depends on the adapter. On an [ACP](/configuration/adapters-acp) adapter that supports the `session/list` capability, it asks the agent for its own sessions. On an [http](/configuration/adapters-http) adapter, it lists the [sessions](/configuration/chat-buffer#sessions) saved to disk.
+What it lists depends on the adapter. On an [ACP](/configuration/adapters-acp) adapter that supports the `session/list` capability, it asks the agent for its own sessions. On an [http](/configuration/adapters-http) adapter, it lists the [sessions](/configuration/sessions) saved to disk.
 
 > [!NOTE]
 > The `/resume` command must be used before sending any messages. It is only available on a fresh chat buffer.
 
 ## /save
 
-The _save_ slash command is specific to [http](/configuration/adapters-http) adapters. It saves the chat to disk as a [session](/configuration/chat-buffer#sessions), which you can restore later with `/resume`. You'll be asked for a title if the chat doesn't already have one.
+The _save_ slash command is specific to [http](/configuration/adapters-http) adapters. It saves the chat to disk as a [session](/configuration/sessions), which you can restore later with `/resume`. You'll be asked for a title if the chat doesn't already have one.
 
 Chats are saved automatically by default, so `/save` is for when you want to name one yourself or save it before the LLM has responded.
 

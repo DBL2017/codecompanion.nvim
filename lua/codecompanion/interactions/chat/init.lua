@@ -64,7 +64,8 @@
 ---@field tools? table<string> List of tools to preload in the chat buffer
 ---@field intro_message? string The welcome message that is displayed in the chat buffer
 ---@field window_opts? table Window configuration options for the chat buffer
----@field yolo_mode? boolean Automatically approve all tool calls
+---@field approval_mode? CodeCompanion.Tools.ApprovalMode How tool calls are approved
+---@field yolo_mode? boolean Deprecated. Use `approval_mode = "auto"`
 
 local adapter_utils = require("codecompanion.adapters.utils")
 local adapters = require("codecompanion.adapters")
@@ -184,6 +185,16 @@ local function backfill_estimated_tokens(messages)
       msg._meta.estimated_tokens = tokens.calculate(msg.content)
     end
   end
+end
+
+---Turn a failed request's reason into the text passed to `on_completed`
+---@param reason string|table
+---@return string
+local function describe_error(reason)
+  if type(reason) == "table" then
+    return reason.body or vim.inspect(reason)
+  end
+  return reason
 end
 
 ---Get the appropriate client for the adapter type
@@ -610,9 +621,11 @@ function Chat.new(args)
   self.bufnr = create_chat_buf()
   self.aug = api.nvim_create_augroup(CONSTANTS.AUTOCMD_GROUP .. ":" .. self.bufnr, { clear = false })
 
-  if args.yolo_mode then
-    approvals:toggle_yolo_mode(self.bufnr)
-    utils.notify("YOLO mode enabled!", vim.log.levels.INFO)
+  local approval_mode = args.approval_mode or (args.yolo_mode and "auto")
+  if approval_mode and approval_mode ~= approvals:get_mode(self.bufnr) then
+    approvals:set_mode(self.bufnr, { mode = approval_mode })
+    local labels = { ask = "Ask", auto = "Auto", yolo = "YOLO" }
+    utils.notify(("Approval mode: %s"):format(labels[approval_mode]), vim.log.levels.INFO)
   end
 
   if not init_parsers(self) then
@@ -1281,7 +1294,7 @@ function Chat:_submit_http(payload)
         end
       elseif self.status == CONSTANTS.STATUS_ERROR then
         log:error("[chat::_submit_http] Error: %s", result.output)
-        self:done(output)
+        self:done(output, nil, nil, nil, { error = describe_error(result.output) })
       end
     end
   end
@@ -1301,8 +1314,9 @@ function Chat:_submit_http(payload)
         return
       end
       self.status = CONSTANTS.STATUS_ERROR
-      log:error("[chat::_submit_http] Error: %s", (err and (err.stderr or err.message)) or "unknown")
-      self:done(output)
+      local reason = (err and (err.stderr or err.message)) or "unknown"
+      log:error("[chat::_submit_http] Error: %s", reason)
+      self:done(output, nil, nil, nil, { error = describe_error(reason) })
     end,
     bufnr = self.bufnr,
     interaction = "chat",
@@ -1502,7 +1516,7 @@ end
 ---@param reasoning? table The reasoning output from the LLM
 ---@param tools? table The tools output from the LLM
 ---@param meta? table Any metadata from the LLM
----@param opts? { status: "stopped" } The reason the done method was called
+---@param opts? { status?: "stopped", error?: string } The reason the done method was called
 ---@return nil
 function Chat:done(output, reasoning, tools, meta, opts)
   opts = opts or {}
@@ -1610,15 +1624,19 @@ function Chat:done(output, reasoning, tools, meta, opts)
   if require("codecompanion.interactions.chat.context_management").apply(self) then
     return
   end
-  self:finish()
+  self:finish({ error = opts.error })
 end
 
 ---End the turn, handing the chat buffer back to the user
+---@param opts? { error?: string }
 ---@return nil
-function Chat:finish()
+function Chat:finish(opts)
+  opts = opts or {}
+  -- Captured first as `ready_for_input` resets the status to an empty string
+  local status = self.status
   self:ready_for_input()
 
-  self:dispatch("on_completed", { status = self.status })
+  self:dispatch("on_completed", { status = status, error = opts.error })
   utils.fire("ChatDone", { bufnr = self.bufnr, id = self.id })
 end
 

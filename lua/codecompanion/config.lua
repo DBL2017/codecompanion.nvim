@@ -221,10 +221,10 @@ The user is working on a %s machine. Please respond with system specific command
           path = "interactions.chat.tools.builtin.delete_file",
           description = "Delete a file in the current working directory",
           opts = {
-            allowed_in_yolo_mode = false,
+            judge = false,
+            protect = true,
             require_approval_before = true,
             require_cmd_approval = true,
-            judge_in_yolo_mode = false,
           },
         },
         ["fetch_webpage"] = {
@@ -296,10 +296,10 @@ The user is working on a %s machine. Please respond with system specific command
           path = "interactions.chat.tools.builtin.run_command",
           description = "Run shell commands initiated by the LLM",
           opts = {
-            allowed_in_yolo_mode = false,
+            judge = false,
             require_approval_before = true,
             require_cmd_approval = true,
-            judge_in_yolo_mode = false,
+            safe_commands = { "git status", "ls", "pwd" }, -- Commands which run without asking in auto mode
             timeout = 300000, -- Timeout for commands (milliseconds) - 5 mins by default
           },
         },
@@ -326,6 +326,9 @@ The user is working on a %s machine. Please respond with system specific command
           },
         },
         opts = {
+          ---The approval mode every chat buffer starts in
+          ---@type CodeCompanion.Tools.ApprovalMode
+          approval_mode = "ask",
           auto_submit_errors = true, -- Send any errors to the LLM automatically?
           auto_submit_success = true, -- Send any successful output to the LLM automatically?
           max_output_tokens = 30000, -- Truncate a tool's output above this many tokens, or the model's limit if lower
@@ -514,6 +517,13 @@ If you are providing code changes, use the insert_edit_into_file tool (if availa
           opts = {
             contains_code = false,
             provider = "default", -- snacks|default
+          },
+        },
+        ["mcp-prompts"] = {
+          path = "interactions.chat.slash_commands.builtin.mcp_prompts",
+          description = "Insert a prompt from an MCP server",
+          opts = {
+            contains_code = false,
           },
         },
         ["now"] = {
@@ -770,7 +780,7 @@ If you are providing code changes, use the insert_edit_into_file tool (if availa
           modes = { n = "gty" },
           index = 20,
           callback = "keymaps.yolo_mode",
-          description = "Toggle YOLO/auto-approval of tool calls",
+          description = "Choose how tool calls are approved",
         },
         goto_file_under_cursor = {
           modes = { n = "gR" },
@@ -939,39 +949,66 @@ The user is working on a %s machine. Please respond with system specific command
       enabled = true,
       keymaps = {
         accept = {
-          modes = { n = "a" },
-          callback = "keymaps.accept",
-          description = "Accept the hunk under the cursor",
+          modes = { n = "ga" },
+          callback = "accept",
+          description = "Accept the hunk, or whole file, under the cursor",
+        },
+        revert = {
+          modes = { n = "gr" },
+          callback = "revert",
+          description = "Revert the hunk under the cursor",
         },
         comment = {
-          modes = { n = "c" },
-          callback = "keymaps.comment",
-          description = "Comment on the hunk under the cursor",
+          modes = { n = "gc" },
+          callback = "comment",
+          description = "Comment on the line under the cursor",
         },
-        diff = {
-          modes = { n = "d" },
-          callback = "keymaps.diff",
-          description = "Diff the hunk under the cursor against the baseline",
+        comments = {
+          modes = { n = "gC" },
+          callback = "comments",
+          description = "Edit the pending comments by hand",
         },
-        ignore = {
-          modes = { n = "x" },
-          callback = "keymaps.ignore",
-          description = "Ignore the hunk's file until the baseline advances",
+        share = {
+          modes = { n = "gs" },
+          callback = "share",
+          description = "Share comments for an agent outside of CodeCompanion",
+        },
+        undo = {
+          modes = { n = "u" },
+          callback = "undo",
+          description = "Undo the last accept or revert",
+        },
+        edit = {
+          modes = { n = { "i", "I" } },
+          callback = "edit",
+          description = "Edit the line in the file itself",
+        },
+        keymaps = {
+          modes = { n = "?" },
+          callback = "keymaps",
+          description = "Show these keymaps",
+          visible = false, -- The float itself says it
+        },
+        next_hunk = {
+          modes = { n = "]h" },
+          callback = "next_hunk",
+          description = "Move to the next hunk",
+        },
+        previous_hunk = {
+          modes = { n = "[h" },
+          callback = "previous_hunk",
+          description = "Move to the previous hunk",
         },
       },
       display = {
-        diff = {
-          enabled = true, -- Disable to bring your own diff plugin, pointed at the baseline ref
-          layout = "vertical", -- vertical|horizontal
-          provider = "native", -- "native"|fun(target: CodeCompanion.CodeReview.DiffTarget)
-        },
-        virtual_text = {
+        comments = {
           enabled = true, -- Show pending comments as virtual text in the buffer
-          icon = "💬 ", -- The icon to use for virtual text
+          icon = "💬 ", -- The icon to use for a comment
           overflow = "trunc", -- See `:h nvim_buf_set_extmark` for `virt_lines_overflow`
         },
       },
       opts = {
+        auto_accept = {}, -- Globs for files that never need reviewing, e.g. { "**/*.lock" }
         storage_dir = vim.fs.joinpath(vim.fn.stdpath("data"), "codecompanion", "code_review"),
       },
     },
@@ -1540,6 +1577,37 @@ local function remove_disabled_keymaps(keymaps)
   return enabled
 end
 
+---Move the yolo mode tool options over to their approval mode equivalents
+---@param tools table
+local function migrate_yolo_tool_opts(tools)
+  local warned = {}
+  ---@param opts { legacy: string, replacement: string }
+  local function warn(opts)
+    if not warned[opts.legacy] then
+      warned[opts.legacy] = true
+      vim.notify(
+        ("[CodeCompanion] The `%s` tool option is deprecated. Use `%s` instead."):format(opts.legacy, opts.replacement),
+        vim.log.levels.WARN,
+        { title = "CodeCompanion" }
+      )
+    end
+  end
+
+  for _, tool in pairs(tools) do
+    local opts = type(tool) == "table" and type(tool.opts) == "table" and tool.opts or {}
+    if opts.allowed_in_yolo_mode ~= nil then
+      warn({ legacy = "allowed_in_yolo_mode", replacement = "protect" })
+      opts.protect = not opts.allowed_in_yolo_mode
+      opts.allowed_in_yolo_mode = nil
+    end
+    if opts.judge_in_yolo_mode ~= nil then
+      warn({ legacy = "judge_in_yolo_mode", replacement = "judge" })
+      opts.judge = opts.judge_in_yolo_mode
+      opts.judge_in_yolo_mode = nil
+    end
+  end
+end
+
 ---@param args? table
 M.setup = function(args)
   args = vim.deepcopy(args or {})
@@ -1615,6 +1683,9 @@ M.setup = function(args)
   if project_config then
     M.config = vim.tbl_deep_extend("force", M.config, project_config)
   end
+
+  -- TODO: Deprecate in v20.0.0 and remove in v21.0.0
+  migrate_yolo_tool_opts(M.config.interactions.chat.tools)
 
   M.config.INFO_NS = vim.api.nvim_create_namespace("CodeCompanion-info")
   M.config.ERROR_NS = vim.api.nvim_create_namespace("CodeCompanion-error")

@@ -119,22 +119,13 @@ CodeCompanion.code_review = function(args)
   local code_review = require("codecompanion.interactions.code_review")
   local subcommand = args.subcommand
 
-  if subcommand == "accept" then
-    return code_review.accept()
-  elseif subcommand == "ignore" then
-    return code_review.ignore()
-  elseif subcommand == "comment" then
-    return code_review.comment(args)
-  elseif subcommand == "comments" then
-    return code_review.edit_comments()
-  elseif subcommand == "approve" or subcommand == "start" then
-    return code_review.approve()
-  elseif subcommand == "share" then
-    return code_review.share()
-  elseif subcommand == "all" then
-    return code_review.open({ scope = "all" })
+  if subcommand == "branch" then
+    return code_review.review_branch()
   end
-  return code_review.open()
+  if subcommand == "comment" then
+    return code_review.comment(args)
+  end
+  return code_review.open_window()
 end
 
 ---Open the files the LLM has edited this session in the quickfix list
@@ -156,12 +147,7 @@ CodeCompanion.chat = function(args)
 
   -- Set the adapter and model if provided
   if args.params and args.params.adapter then
-    local adapter_name = args.params.adapter
-    adapter = config.adapters.http[adapter_name] or config.adapters.acp[adapter_name]
-    adapter = require("codecompanion.adapters").resolve(adapter)
-    if args.params.model then
-      adapter.schema.model.default = args.params.model
-    end
+    adapter = require("codecompanion.adapters").resolve(args.params.adapter, { model = args.params.model })
     if adapter.type == "acp" and args.params.command then
       acp_command = args.params.command
     end
@@ -202,6 +188,7 @@ CodeCompanion.chat = function(args)
   return require("codecompanion.interactions.chat").new({
     acp_command = acp_command,
     adapter = adapter,
+    approval_mode = args.approval_mode,
     auto_submit = auto_submit,
     buffer_context = context,
     callbacks = args.callbacks,

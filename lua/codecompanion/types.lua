@@ -62,6 +62,25 @@
 ---@field isError? boolean
 ---@field content MCP.ContentBlock[]
 
+---@class MCP.PromptArgument
+---@field name string
+---@field description? string
+---@field required? boolean
+
+---@class MCP.Prompt
+---@field name string
+---@field title? string
+---@field description? string
+---@field arguments? MCP.PromptArgument[]
+
+---@class MCP.PromptMessage
+---@field role "user"|"assistant"
+---@field content MCP.ContentBlock
+
+---@class MCP.GetPromptResult
+---@field description? string
+---@field messages MCP.PromptMessage[]
+
 ---@meta Tree-sitter
 
 ---@class vim.treesitter.LanguageTree
@@ -174,6 +193,7 @@
 ---@field opts? table The options for the tool
 ---@field env? fun(schema: table): table|nil Any environment variables that can be used in the *_cmd fields. Receives the parsed schema from the LLM
 ---@field gates? table Handlers which decide whether a tool may run
+---@field gates.is_safe? fun(self: CodeCompanion.Tools.Tool, meta: table): boolean Whether the tool can run without asking in auto mode
 ---@field gates.judge_context? fun(self: CodeCompanion.Tools.Tool, meta: table): string|nil The action, described in plain English, for the background judge to vet
 ---@field handlers table Functions which handle the execution of a tool
 ---@field handlers.setup? fun(self: CodeCompanion.Tools.Tool, tools: CodeCompanion.Tools): any Function used to setup the tool. Called before any commands
