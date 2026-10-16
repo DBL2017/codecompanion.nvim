@@ -1,5 +1,6 @@
 local adapter_utils = require("codecompanion.adapters.utils")
-local openai = require("codecompanion.adapters.http.openai_legacy")
+local openai = require("codecompanion.adapters.http.openai")
+local structured_outputs = require("codecompanion.adapters.utils.structured_outputs")
 
 ---Set the format of the role and content for the messages from the chat buffer
 ---@param self CodeCompanion.HTTPAdapter
@@ -171,6 +172,19 @@ return {
             return part.content
           end)
           :join("")
+      end,
+
+      ---Set the structured output format for a request
+      ---Only emitted when the active model declares `can_form_structured_outputs` in its
+      ---opts, since not every DeepSeek compatible endpoint honours `response_format.json_schema`
+      ---@param self CodeCompanion.HTTPAdapter
+      ---@param schema CodeCompanion.StructuredOutput.Schema
+      ---@return table|nil
+      build_structured_output = function(self, schema)
+        if not schema or not self.opts.can_form_structured_outputs then
+          return nil
+        end
+        return structured_outputs.to_openai(schema)
       end,
     },
 
