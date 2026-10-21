@@ -1,5 +1,5 @@
 local adapter_utils = require("codecompanion.adapters.utils")
-local openai = require("codecompanion.adapters.http.openai")
+local openai = require("codecompanion.adapters.http.openai_legacy")
 local structured_outputs = require("codecompanion.adapters.utils.structured_outputs")
 
 ---Set the format of the role and content for the messages from the chat buffer
