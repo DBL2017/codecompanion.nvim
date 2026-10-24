@@ -178,9 +178,10 @@ return {
       ---Only emitted when the active model declares `can_form_structured_outputs` in its
       ---opts, since not every DeepSeek compatible endpoint honours `response_format.json_schema`
       ---@param self CodeCompanion.HTTPAdapter
-      ---@param schema CodeCompanion.StructuredOutput.Schema
+      ---@param args { schema?: CodeCompanion.StructuredOutput.Schema }
       ---@return table|nil
-      build_structured_output = function(self, schema)
+      build_structured_output = function(self, args)
+        local schema = args.schema
         if not schema or not self.opts.can_form_structured_outputs then
           return nil
         end
