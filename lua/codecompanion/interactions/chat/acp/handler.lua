@@ -156,6 +156,8 @@ function ACPHandler:ensure_session()
   self.chat:update_metadata()
 
   require("codecompanion.interactions.chat.acp.defaults").apply(self.chat.adapter, conn)
+  -- 设置默认配置之后发出事件通知
+  self.chat:update_metadata()
 
   return true
 end
