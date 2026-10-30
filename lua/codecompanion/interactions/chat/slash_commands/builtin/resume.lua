@@ -1,6 +1,16 @@
 local config = require("codecompanion.config")
+local picker = require("codecompanion.providers.slash_commands.picker")
 local sessions = require("codecompanion.interactions.chat.sessions")
+local storage = require("codecompanion.interactions.chat.sessions.storage")
 local utils = require("codecompanion.utils")
+
+local CONSTANTS = {
+  NAME = "Resume",
+  PROMPT_HTTP = "Restore Session",
+  PROMPT_ACP = "Resume Session",
+  EMPTY_HTTP = "No saved sessions found",
+  EMPTY_ACP = "No previous sessions found",
+}
 
 ---@class CodeCompanion.SlashCommand.Resume: CodeCompanion.SlashCommand
 local SlashCommand = {}
@@ -36,28 +46,6 @@ function SlashCommand.enabled(chat)
   return true, ""
 end
 
----Format a session for display in the picker
----@param session table SessionInfo
----@return string
-local function format_session(session)
-  local parts = {}
-
-  if session.updatedAt then
-    local ts = utils.timestamp_from_iso(session.updatedAt)
-    if ts then
-      table.insert(parts, "(" .. utils.make_relative(ts) .. ")")
-    end
-  end
-
-  if session.title then
-    table.insert(parts, session.title)
-  else
-    table.insert(parts, session.sessionId)
-  end
-
-  return table.concat(parts, " ")
-end
-
 ---@param chat CodeCompanion.Chat
 ---@return boolean
 local function has_user_messages(chat)
@@ -66,63 +54,91 @@ local function has_user_messages(chat)
   end)
 end
 
----Execute the slash command
+---Pick the provider the user configured for this slash command
+---@param self CodeCompanion.SlashCommand.Resume
+---@param providers table<string, fun(SlashCommand: CodeCompanion.SlashCommand)>
 ---@return nil
-function SlashCommand:execute()
+local function use_provider(self, providers)
+  local name = self.config.opts and self.config.opts.provider or "default"
+  local pick = providers[name] or providers["default"]
+  return pick(self)
+end
+
+---HTTP chats: restore a persisted session into a new chat buffer
+---@return nil
+function SlashCommand:restore_http()
   local Chat = self.Chat
+  local resumed = false
 
-  if not Chat.acp_connection then
-    return sessions.select({
-      on_restored = function()
-        if not has_user_messages(Chat) then
-          Chat:close()
-        end
-      end,
-    })
-  end
-
-  if Chat.cycle > 1 then
-    return utils.notify("The /resume command must be called before submitting any messages", vim.log.levels.WARN)
-  end
-
-  if not Chat.acp_connection then
-    return utils.notify("No ACP connection available", vim.log.levels.WARN)
-  end
-
-  local sessions = Chat.acp_connection:session_list({
-    max_sessions = (self.config.opts and self.config.opts.max_sessions) or 500,
+  local providers = picker.build_list_pickers({
+    prompt = CONSTANTS.PROMPT_HTTP,
+    empty_message = CONSTANTS.EMPTY_HTTP,
+    preview = true,
+    items = function()
+      return vim.tbl_map(function(session)
+        return {
+          name = session.meta.title or session.stem,
+          description = session.meta.saved_at and "(" .. utils.make_relative(session.meta.saved_at) .. " ago)" or "",
+          stem = session.stem,
+          path = storage.path(session.stem, "ui"),
+        }
+      end, sessions.list())
+    end,
+    output = function(_, item)
+      if resumed or not item or not item.stem then
+        return
+      end
+      resumed = true
+      sessions.load(item.stem)
+      if not has_user_messages(Chat) then
+        Chat:close()
+      end
+    end,
   })
 
-  if #sessions == 0 then
-    return utils.notify("No previous sessions found", vim.log.levels.INFO)
-  end
+  return use_provider(self, providers)
+end
 
-  local choices = {}
-  local session_map = {}
-  for i, session in ipairs(sessions) do
-    table.insert(choices, format_session(session))
-    session_map[i] = session
-  end
+---ACP chats: resume a session reported by the agent
+---@param acp_sessions table[] The SessionInfo list, fetched synchronously
+---@return nil
+function SlashCommand:resume_acp(acp_sessions)
+  local Chat = self.Chat
+  local resumed = false
 
-  vim.ui.select(choices, {
-    prompt = "Resume Session",
-    kind = "codecompanion.nvim",
-  }, function(_, idx)
-    if not idx then
-      return
-    end
+  local providers = picker.build_list_pickers({
+    prompt = CONSTANTS.PROMPT_ACP,
+    empty_message = CONSTANTS.EMPTY_ACP,
+    preview = false,
+    items = function()
+      return vim.tbl_map(function(session)
+        local ts = session.updatedAt and utils.timestamp_from_iso(session.updatedAt)
+        return {
+          name = session.title or session.sessionId,
+          description = ts and "(" .. utils.make_relative(ts) .. ")" or session.sessionId,
+          session = session,
+        }
+      end, acp_sessions)
+    end,
+    output = function(_, item)
+      local selected = item and item.session
+      if resumed or not selected then
+        return
+      end
+      resumed = true
 
-    local selected = session_map[idx]
+      -- Collect all session updates during the synchronous load
+      local updates = {}
+      local ok = Chat.acp_connection:load_session(selected.sessionId, {
+        on_session_update = function(update)
+          table.insert(updates, update)
+        end,
+      })
 
-    -- Collect all session updates during the synchronous load
-    local updates = {}
-    local ok = Chat.acp_connection:load_session(selected.sessionId, {
-      on_session_update = function(update)
-        table.insert(updates, update)
-      end,
-    })
+      if not ok then
+        return utils.notify("Failed to load session", vim.log.levels.ERROR)
+      end
 
-    if ok then
       local acp_commands = require("codecompanion.interactions.chat.acp.commands")
       acp_commands.link_buffer_to_session(Chat.bufnr, Chat.acp_connection.session_id)
 
@@ -140,10 +156,34 @@ function SlashCommand:execute()
       })
 
       utils.notify("Resumed session: " .. (selected.title or selected.sessionId), vim.log.levels.INFO)
-    else
-      utils.notify("Failed to load session", vim.log.levels.ERROR)
-    end
-  end)
+    end,
+  })
+
+  return use_provider(self, providers)
+end
+
+---Execute the slash command
+---@return nil
+function SlashCommand:execute()
+  local Chat = self.Chat
+
+  if not Chat.acp_connection then
+    return self:restore_http()
+  end
+
+  if Chat.cycle > 1 then
+    return utils.notify("The /resume command must be called before submitting any messages", vim.log.levels.WARN)
+  end
+
+  local acp_sessions = Chat.acp_connection:session_list({
+    max_sessions = (self.config.opts and self.config.opts.max_sessions) or 500,
+  })
+
+  if #acp_sessions == 0 then
+    return utils.notify(CONSTANTS.EMPTY_ACP, vim.log.levels.INFO)
+  end
+
+  return self:resume_acp(acp_sessions)
 end
 
 return SlashCommand
