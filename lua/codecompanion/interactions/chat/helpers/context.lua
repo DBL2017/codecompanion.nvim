@@ -8,6 +8,38 @@ local M = {}
 
 local fmt = string.format
 
+---Strip a trailing partial UTF-8 sequence so the string stays decodable.
+---Byte level truncation can cut a multi byte character in half (e.g. a
+---Chinese char left as 0xE4 0xB8), which makes upstream decoders fail with
+---`'utf-8' codec can't decode byte ...`.
+---@param str string
+---@return string
+local function trim_to_utf8_boundary(str)
+  local len = #str
+  -- A valid UTF-8 tail byte is never a continuation byte (0x80-0xBF)
+  if len == 0 or str:byte(len) < 0x80 or str:byte(len) >= 0xC0 then
+    return str
+  end
+  -- Walk back to the lead byte of the sequence being cut
+  local i = len
+  while i > 1 and str:byte(i) >= 0x80 and str:byte(i) < 0xC0 do
+    i = i - 1
+  end
+  local lead = str:byte(i)
+  local size
+  if lead >= 0xF0 then
+    size = 4
+  elseif lead >= 0xE0 then
+    size = 3
+  elseif lead >= 0xC0 then
+    size = 2
+  else
+    return str:sub(1, i - 1)
+  end
+  -- Drop the incomplete sequence
+  return str:sub(1, i - 1)
+end
+
 ---@param messages CodeCompanion.Chat.Messages
 ---@return number
 function M.estimate_tokens(messages)
@@ -73,7 +105,7 @@ function M.truncate_tool_output(opts)
   local budget = math.max(limit - tokens.calculate(notice), 0)
   local keep = math.floor(#opts.content * (budget / token_count))
 
-  return opts.content:sub(1, keep) .. notice
+  return trim_to_utf8_boundary(opts.content:sub(1, keep)) .. notice
 end
 
 ---Returns the number of tokens that trigger context management for a given operation
