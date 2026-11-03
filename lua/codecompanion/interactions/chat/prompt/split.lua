@@ -50,6 +50,11 @@ end
 ---Queue the prompt if the LLM is busy, otherwise write it into the chat buffer ready to send
 ---@return boolean should_submit
 function SplitPrompt:prepare_submit()
+  if self.input:get_prompt() == "" then
+    utils.notify("Cannot send an empty message", vim.log.levels.WARN)
+    return false
+  end
+
   if self.chat._turn_in_progress or self.chat.current_request then
     self:_queue()
     return false
