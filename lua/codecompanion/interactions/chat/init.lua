@@ -1337,6 +1337,18 @@ function Chat:submit(opts)
     return
   end
 
+  local message_to_submit
+  if not opts.auto_submit and not opts.regenerate then
+    message_to_submit = parser.messages(self, self.header_line)
+    local last_message = self.messages[#self.messages]
+    local has_pending_user_message = last_message and last_message.role == config.constants.USER_ROLE
+    if (not message_to_submit or vim.trim(message_to_submit.content) == "") and not has_pending_user_message then
+      utils.notify("Cannot send an empty message", vim.log.levels.WARN)
+      self.prompt:undo_submit()
+      return
+    end
+  end
+
   if self.current_request then
     return log:debug("Chat request already in progress")
   end
@@ -1362,7 +1374,6 @@ function Chat:submit(opts)
       return
     end
   else
-    local message_to_submit = parser.messages(self, self.header_line)
     if not message_to_submit and not helpers.has_user_messages(self.messages) then
       return log:warn("No messages to submit")
     end
