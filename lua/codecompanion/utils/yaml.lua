@@ -165,9 +165,9 @@ local function decode(source, node)
       error("Invalid boolean scalar")
     end
   elseif nt == "block_scalar" or nt == "literal_block" or nt == "folded_block" then
-    local text = vim.treesitter.get_node_text(node, source):gsub('%s+$', '')
+    local text = vim.treesitter.get_node_text(node, source):gsub("%s+$", "")
     if nt == "folded_block" then
-      text = text:gsub('\r\n', '\n'):gsub('\n', ' '):gsub(' +', ' ')
+      text = text:gsub("\r\n", "\n"):gsub("\n", " "):gsub(" +", " ")
     end
     return text
   elseif nt == "null_scalar" then
